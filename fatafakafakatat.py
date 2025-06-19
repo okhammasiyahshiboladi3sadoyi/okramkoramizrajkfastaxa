@@ -32,6 +32,7 @@ if machine_code in hash_values_list:
     import time
     import subprocess
     from urllib.parse import unquote
+    import fake_useragent
     from termcolor import colored
     from telethon import TelegramClient
     from telethon.sessions import StringSession
