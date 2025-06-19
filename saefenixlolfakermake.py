@@ -37,6 +37,7 @@ if machine_code in hash_values_list:
     from telethon import TelegramClient
     from telethon.tl.functions.channels import JoinChannelRequest
     from telethon.sessions import StringSession
+    import fake_useragent
     from telethon.tl.types import InputUser, InputBotAppShortName
     from telethon.tl.functions.messages import RequestAppWebViewRequest
     import csv
