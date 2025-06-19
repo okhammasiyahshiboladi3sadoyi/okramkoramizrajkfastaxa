@@ -133,7 +133,7 @@ if machine_code in hash_values_list:
                         'Sec-Fetch-Dest': 'empty',
                         'Sec-Fetch-Mode': 'cors',
                         'Sec-Fetch-Site': 'same-origin',
-                        "User-Agent": "Mozilla/5.0 (Linux; Android 13; SAMSUNG SM-S901B) AppleWebKit/537.36 (KHTML, like Gecko) SamsungBrowser/21.0 Chrome/114.0.5735.131 Mobile Safari/537.36"
+                        'User-Agent': fake_useragent.UserAgent().random
                     }
 
                 ssl_context = ssl.create_default_context()
