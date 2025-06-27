@@ -1,3 +1,4 @@
+#captchasiz kod
 import ssl
 import base64
 import asyncio
@@ -15,7 +16,41 @@ from telethon.tl.functions.messages import RequestAppWebViewRequest
 import csv
 from termcolor import colored
 from telethon.tl.functions.account import UpdateStatusRequest
-with open(r"C:\join\proxy.csv", 'r') as f:
+
+import os
+import sys
+
+def detect_environment():
+    phone_path = "/storage/emulated/0/giv"
+    pc_path = "C:/join"
+
+    if os.path.exists(phone_path):
+        print("📱 Telefon muhitida ishga tushdi")
+        return phone_path
+    elif os.path.exists(pc_path):
+        print("💻 Kompyuter muhitida ishga tushdi")
+        return pc_path
+    else:
+        try:
+            os.makedirs(phone_path)
+            print(f"📂 {phone_path} papkasi yaratildi (telefon muhit deb qabul qilindi)")
+            return phone_path
+        except:
+            try:
+                os.makedirs(pc_path)
+                print(f"📂 {pc_path} papkasi yaratildi (kompyuter muhit deb qabul qilindi)")
+                return pc_path
+            except Exception as e:
+                print("❌ Hech bir muhit aniqlanmadi va papka yaratilolmadi")
+                print(f"Xatolik: {e}")
+                sys.exit("⛔ Dastur to‘xtatildi. Papkalarni qo‘lda yarating va qayta urinib ko‘ring.")
+
+# 🔁 Hamma fayllarni shu asosiy yo‘l orqali boshqaramiz
+BASE_PATH = detect_environment()
+
+def file_path(filename):
+    return os.path.join(BASE_PATH, filename)
+with open(file_path("proxy.csv"), 'r') as f:
     reader = csv.reader(f)
     ROTATED_PROXY = next(reader)[0]
     
@@ -28,7 +63,7 @@ def read_csv(file_path):
 
 givs = []
 bot_mapping = {}
-with open(r"C:\join\randogiv.csv", 'r', encoding='utf-8') as f:
+with open(file_path("randogiv.csv"), 'r', encoding='utf-8') as f:
     reader = csv.reader(f)
     for row in reader:
         if len(row) >= 2:
@@ -41,15 +76,14 @@ print("📌 Yuklangan start_param lar va botlar:")
 for k, v in bot_mapping.items():
     print(f"   ➤ {k} => {v}")
 
-with open(r"C:\join\randolimit.csv", 'r') as f:
+with open(file_path("randolimit.csv"), 'r') as f:
     reader = csv.reader(f)
     limituzz = int(next(reader)[0])
 print(f"Kutiladigan vaqt - {limituzz}")
-
-with open(r"C:\join\ranochiqkanal.csv", 'r') as f: 
+with open(file_path("ranochiqkanal.csv"), 'r') as f:
     premium_channels = [row[0] for row in csv.reader(f)]
 
-with open(r"C:\join\ranyopiqkanal.csv", 'r') as f: 
+with open(file_path("ranyopiqkanal.csv"), 'r') as f:
     yopiq_channels = [row[0] for row in csv.reader(f)]
 
 channels = premium_channels + yopiq_channels
