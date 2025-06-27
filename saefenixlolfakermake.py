@@ -1,3 +1,4 @@
+#captchalik kod
 import ssl
 import base64
 import asyncio
