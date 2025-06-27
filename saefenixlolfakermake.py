@@ -19,6 +19,39 @@ from telethon.tl.functions.account import UpdateStatusRequest
 from io import BytesIO
 from PIL import Image
 import os
+
+
+import os
+import sys
+
+# Muhitni aniqlash
+def detect_env():
+    phone_dir = "/storage/emulated/0/giv"
+    pc_dir = "C:/join"
+
+    if os.path.exists(phone_dir):
+        print("📱 Telefon (Termux) muhitida ishlayapti")
+        return phone_dir
+    elif os.path.exists(pc_dir):
+        print("💻 Kompyuter (Windows) muhitida ishlayapti")
+        return pc_dir
+    else:
+        try:
+            os.makedirs(phone_dir)
+            print(f"📁 {phone_dir} papkasi yaratildi. Fayllarni shu yerga joylashtiring.")
+            sys.exit("📥 Ma'lumotlar yo'q. Fayllarni to‘ldirib qayta urinib ko‘ring.")
+        except:
+            try:
+                os.makedirs(pc_dir)
+                print(f"📁 {pc_dir} papkasi yaratildi. Fayllarni shu yerga joylashtiring.")
+                sys.exit("📥 Ma'lumotlar yo'q. Fayllarni to‘ldirib qayta urinib ko‘ring.")
+            except Exception as e:
+                print("❌ Papkalarni yaratib bo‘lmadi:", e)
+                sys.exit("⛔ Dastur to‘xtatildi.")
+def get_path(filename):
+    return os.path.join(BASE_DIR, filename)
+# Asosiy yo‘l
+BASE_DIR = detect_env()
 def image2base64(image_path):
     with open(image_path, "rb") as image_file:
         return base64.b64encode(image_file.read()).decode("utf-8")
@@ -62,12 +95,12 @@ async def get_result(code):
     return None
 
 
-with open(r"C:\\join\\xevilkey.csv", 'r') as f:
+with open(get_path("xevilkey.csv"), 'r') as f:
     XEVIL_API_KEY = str(next(csv.reader(f))[0])
     
     
     
-with open(r"C:\join\proxy.csv", 'r') as f:
+with open(get_path("proxy.csv"), 'r') as f:
     reader = csv.reader(f)
     ROTATED_PROXY = next(reader)[0]
     
@@ -80,7 +113,7 @@ def read_csv(file_path):
 
 givs = []
 bot_mapping = {}
-with open(r"C:\join\randogiv.csv", 'r', encoding='utf-8') as f:
+with open(get_path("randogiv.csv"), 'r', encoding='utf-8') as f:
     reader = csv.reader(f)
     for row in reader:
         if len(row) >= 2:
@@ -92,16 +125,16 @@ with open(r"C:\join\randogiv.csv", 'r', encoding='utf-8') as f:
 print("📌 Yuklangan start_param lar va botlar:")
 for k, v in bot_mapping.items():
     print(f"   ➤ {k} => {v}")
-
-with open(r"C:\join\randolimit.csv", 'r') as f:
+    
+with open(get_path("randolimit.csv"), 'r') as f:
     reader = csv.reader(f)
     limituzz = int(next(reader)[0])
 print(f"Kutiladigan vaqt - {limituzz}")
 
-with open(r"C:\join\ranochiqkanal.csv", 'r') as f: 
+with open(get_path("ranochiqkanal.csv"), 'r') as f:
     premium_channels = [row[0] for row in csv.reader(f)]
 
-with open(r"C:\join\ranyopiqkanal.csv", 'r') as f: 
+with open(get_path("ranyopiqkanal.csv"), 'r') as f:
     yopiq_channels = [row[0] for row in csv.reader(f)]
 
 channels = premium_channels + yopiq_channels
@@ -110,7 +143,7 @@ async def run(phone, start_params, channels):
     api_id = 22962676
     api_hash = '543e9a4d695fe8c6aa4075c9525f7c57'
 
-    tg_client = TelegramClient(f"../sessions/{phone}", api_id, api_hash)
+    tg_client = TelegramClient(f"sessions/{phone}", api_id, api_hash)
     await tg_client.connect()
     if not await tg_client.is_user_authorized():
         print('Sessiyasi yoq raqam ')
@@ -213,12 +246,8 @@ async def run(phone, start_params, channels):
 
                         if description == "ALREADY_JOINED":
                             print(colored(f"{name} | ❕ Allaqachon qatnashgan", "blue"))
-                            with open("danludanvodka.csv", "a", newline='', encoding='utf-8') as f:
-                                csv.writer(f).writerow([phone])
                         elif ok and result == "success":
                             print(colored(f"{name} | ✅ Givga muvaffaqiyatli qo‘shildi", "green"))
-                            with open("danludanvodka.csv", "a", newline='', encoding='utf-8') as f:
-                                csv.writer(f).writerow([phone])
                         else:
                             print(colored(f"{name} | ⚠️ Giv javobi: {response_json}", "yellow"))
                         description = response_json.get("description", "")
@@ -281,7 +310,7 @@ async def sem_run(phone, givs, channels):
 
 async def main():
     try:
-        phonecsv = "../phone"
+        phonecsv = "phone"
         with open(f"{phonecsv}.csv", 'r') as f:
             phones = [line.strip() for line in f if line.strip()]
         print(f"📲 Umumiy raqamlar soni: {len(phones)}")
