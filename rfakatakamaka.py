@@ -224,27 +224,26 @@ async def participate(tg_client: TelegramClient, name):
         for _ in range(2): response = await http_client.post("https://randombeast.win/api/auth/verify", json=json_data)
         logger.info(f"<lm>{name}</lm> | Tekshirish holati: <lg>{response.status}</lg>")
 
-        json_data = {
-            "drawId": ID,
-            "initData": init_data
-        }
-        response = await http_client.post("https://randombeast.win/api/draw/getdraw", json=json_data)
-        logger.info(f"<lm>{name}</lm> | GetDraw holati: <lg>{response.status}</lg>")
-        data = await response.json()
-        if not response.ok:
-            return False
-        elif "existingTicket" in data and data["existingTicket"]:
-            ticket = data["existingTicket"]
-            with open(f"{ID}.csv", "a", newline='', encoding='utf-8') as file:
-                    writer = csv.writer(file)
-                    writer.writerow([name])
-            logger.info(f"🎫 Ticket mavjud | <lg>{name}</lg> | ID: {ticket['id']} | Number: {ticket['ticketNumber']} | Status: {ticket['status']} | Created: {ticket['createdAt']}")
-            return True
-        else:
-            logger.info(f"⚠️ <ly>{name}</ly> | Ticket mavjud emas.")
-            logger.info("Givga qo'shilishni boshlayabman")
+        attempt = 0
+        max_attempts = 3
+        success = False
+
+        while attempt < max_attempts and not success:
+            attempt += 1
+            logger.info(f"<lm>{name}</lm> | Givga qatnashish {attempt}-urinish")
+
+            # Har safar yangi captcha olish
+            json_data = {
+                "drawId": ID,
+                "initData": init_data
+            }
+            response = await http_client.post("https://randombeast.win/api/draw/getdraw", json=json_data)
+            if not response.ok:
+                logger.error(f"<lm>{name}</lm> | Yangi CAPTCHA olishda xatolik")
+                continue
+
             data = await response.json()
-            checkin_token = data['checkinToken']
+            checkin_token = data.get('checkinToken')
             captcha = data.get('captcha', {})
 
             captcha_svg = captcha.get('svg')
@@ -252,25 +251,17 @@ async def participate(tg_client: TelegramClient, name):
 
             if not captcha_svg or not captcha_token:
                 logger.error(f"<lm>{name}</lm> | CAPTCHA ma'lumotlari yetarli emas")
-                return False
+                continue
 
             base64_body = svg2base64(svg_data=captcha_svg)
             result_code = await img2txt(body=base64_body)
-
-
             await asyncio.sleep(delay=1)
-
             captcha_input = await get_result(code=result_code)
             if not captcha_input:
-                logger.warning(f"<lm>{name}</lm> | CAPTCHA yechilmadi, lekin davom etyapman...")
+                logger.warning(f"<lm>{name}</lm> | CAPTCHA yechilmadi, keyingi urinish...")
+                continue
 
-
-            # challenge_token = await get_challenge_token(ID, http_client)
-            # if not challenge_token:
-            #     return False
-
-            # logger.info(f"<lm>{name}</lm> | Challenge token: <lg>{challenge_token[:32]}...</lg>")
-
+            # checkin so‘rovi
             json_data = {
                 'drawId': ID,
                 'initData': init_data,
@@ -279,23 +270,28 @@ async def participate(tg_client: TelegramClient, name):
                 'challengeToken': None,
                 'checkinToken': checkin_token,
             }
+
             response = await http_client.post("https://randombeast.win/api/draw/checkin", json=json_data)
             logger.info(f"<lm>{name}</lm> | Givga qatnashish holati: <lg>{response.status}</lg>")
+
             if not response.ok:
-                return False
+                continue
 
             data = await response.json()
-            success = data['success']
-            message = data['message']
+            success = data.get('success', False)
+            message = data.get('message', '')
 
             if success:
                 logger.success(f"<lm>{name}</lm> | <lc>{ID}</lc> Muvaffaqiyatli qatnashdi")
-                with open(f"{ID}.csv", "a", newline='', encoding='utf-8') as file:
+                with open(f"{ID}.csv", 'a', newline='', encoding='utf-8') as file:
                     writer = csv.writer(file)
                     writer.writerow([name])
                 return True
+
             logger.error(f"<lm>{name}</lm> | Xabar: <lr>{message}</lr>")
-            return False
+
+        return False
+
 async def main():
     with open("accounts.json", encoding="utf-8") as f:
         accounts_data = json.load(f)
