@@ -1,4 +1,4 @@
-# -*- coding: utf-8 -*- captchalik kod
+# -*- coding: utf-8 -*- captchasiz randomize
 import requests
 from licensing.methods import Helpers
 import sys
