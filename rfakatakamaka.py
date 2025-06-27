@@ -1,3 +1,4 @@
+#randombeast
 import sys
 import json
 import base64
@@ -207,7 +208,6 @@ async def participate(tg_client: TelegramClient, name):
         'origin': 'https://randombeast.win',
         'pragma': 'no-cache',
         'priority': 'u=1, i',
-        'referer': f'https://randombeast.win/user/draws/drawjoin/{ID}',
         'sec-ch-ua': '"Microsoft Edge";v="134", "Chromium";v="134", "Not:A-Brand";v="24", "Microsoft Edge WebView2";v="134"',
         'sec-ch-ua-mobile': '?0',
         'sec-ch-ua-platform': '"Windows"',
@@ -218,12 +218,20 @@ async def participate(tg_client: TelegramClient, name):
     }
 
     async with aiohttp.ClientSession(headers=headers) as http_client:
+        response = await http_client.get(F"https://randombeast.win/api/draw/getTracking?trackingCode={ID}")
+        if response.ok:
+            data = await response.json()
+            draw_id = data.get("drawId")
+            if draw_id:
+                headers["referer"] = f"https://randombeast.win/user/draws/drawjoin/{draw_id}"
+            
+        else:
+            logger.warning(f"<lm>{name}</lm> | Tekshirish holati: <lg>{response.status}</lg>")
         json_data = {
             "initData": init_data
         }
         for _ in range(2): response = await http_client.post("https://randombeast.win/api/auth/verify", json=json_data)
-        logger.info(f"<lm>{name}</lm> | Tekshirish holati: <lg>{response.status}</lg>")
-
+        
         attempt = 0
         max_attempts = 3
         success = False
@@ -234,7 +242,7 @@ async def participate(tg_client: TelegramClient, name):
 
             # Har safar yangi captcha olish
             json_data = {
-                "drawId": ID,
+                "drawId": draw_id,
                 "initData": init_data
             }
             response = await http_client.post("https://randombeast.win/api/draw/getdraw", json=json_data)
@@ -263,7 +271,7 @@ async def participate(tg_client: TelegramClient, name):
 
             # checkin so‘rovi
             json_data = {
-                'drawId': ID,
+                'drawId': draw_id,
                 'initData': init_data,
                 'captchaToken': captcha_token,
                 'captchaInput': captcha_input,
