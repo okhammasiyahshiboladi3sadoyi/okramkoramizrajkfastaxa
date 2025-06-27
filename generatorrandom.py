@@ -168,6 +168,7 @@ async def run(phone, start_params, channels):
                         response = await http_client.get(url=url, ssl=False)
                         response.raise_for_status()
                         response_json = await response.json()
+                        print(response_json)
                         if response_json.get("description") == "ALREADY_JOINED":
                             pass
                         else:
