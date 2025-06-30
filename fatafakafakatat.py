@@ -31,7 +31,7 @@ def color(text, color_code):
     code = color_map.get(color_code, "97")
     return f"\033[{code}m{text}\033[0m"
 
-url = "https://raw.githubusercontent.com/Enshteyn40/crdevice/refs/heads/main/portal_2.csv"
+url = "https://raw.githubusercontent.com/Enshteyn40/crdevice/refs/heads/main/randomize_3.csv"
 response = requests.get(url)
 lines = response.text.splitlines()
 hash_values_list = [line.strip() for line in lines]
