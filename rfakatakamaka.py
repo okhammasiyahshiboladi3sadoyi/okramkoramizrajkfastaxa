@@ -157,9 +157,51 @@ async def get_result(code):
     logger.warning("CAPTCHA 20 soniyada yechilmadi, davom etilyapti...")
     return None
 
+import random
+
+def divide_batches(accounts_list, batch_size):
+    """
+    Divide accounts into batches based on custom invite strategy:
+    - First batch_size accounts run without inviteCode
+    - As soon as an inviteCode is obtained, use it for the next 4 * batch_size accounts
+    - Then again skip one batch (without inviteCode), then use same/new code for next 4 batches, and so on
+    """
+    batches = []
+    n = len(accounts_list)
+    i = 0
+    invite_period = 4
+    use_invite = False
+    invite_code = None
+
+    while i < n:
+        current_batch = accounts_list[i:i + batch_size]
+        batches.append({
+            "accounts": current_batch,
+            "use_invite": use_invite,
+            "invite_code": invite_code,
+        })
+
+        if use_invite:
+            invite_period -= 1
+            if invite_period == 0:
+                # after 4 batches, reset
+                use_invite = False
+                invite_period = 4
+        else:
+            if invite_code is None:
+                # this is first batch (no invite)
+                pass
+            else:
+                use_invite = True
+
+        i += batch_size
+
+    return batches
 
 
-async def participate(tg_client: TelegramClient, name):
+
+
+async def participate(tg_client: TelegramClient, name, invite_code=None):
     async with tg_client:
         bot_entity = await tg_client.get_entity("randombeast_bot")
         bot = InputUser(user_id=bot_entity.id, access_hash=bot_entity.access_hash)
@@ -268,16 +310,30 @@ async def participate(tg_client: TelegramClient, name):
             if not captcha_input:
                 logger.warning(f"<lm>{name}</lm> | CAPTCHA yechilmadi, keyingi urinish...")
                 continue
-
-            # checkin so‘rovi
-            json_data = {
-                'drawId': draw_id,
-                'initData': init_data,
-                'captchaToken': captcha_token,
-                'captchaInput': captcha_input,
-                'challengeToken': None,
-                'checkinToken': checkin_token,
-            }
+            
+            if invite_code:
+                #invite_codelik
+                json_data = {
+                    'drawId': draw_id,
+                    'initData': init_data,
+                    'inviteCode': invite_code,
+                    'captchaToken': captcha_token,
+                    'captchaInput': captcha_input,
+                    'challengeToken': None,
+                    'checkinToken': checkin_token,
+                    'livenessCheckHash': None,
+                    'trackingCode': None
+                }
+            else:
+                # invite_codesiz
+                json_data = {
+                    'drawId': draw_id,
+                    'initData': init_data,
+                    'captchaToken': captcha_token,
+                    'captchaInput': captcha_input,
+                    'challengeToken': None,
+                    'checkinToken': checkin_token,
+                }
 
             response = await http_client.post("https://randombeast.win/api/draw/checkin", json=json_data)
             logger.info(f"<lm>{name}</lm> | Givga qatnashish holati: <lg>{response.status}</lg>")
@@ -294,20 +350,38 @@ async def participate(tg_client: TelegramClient, name):
                 with open(f"{ID}.csv", 'a', newline='', encoding='utf-8') as file:
                     writer = csv.writer(file)
                     writer.writerow([name])
-                return True
+                    
+                json_data = {
+                    "action": "generateInviteLink",
+                    "drawId": draw_id,
+                    "initData": init_data
+                }
+                    
+                response = await http_client.post("https://randombeast.win/api/draw/invitelink", json=json_data)
+                if response.ok:
+                    result = await response.json()
+                    import re
+                    link = result["link"]
+                    match = re.search(r'invite_([A-Za-z0-9]+)', link)
+                    if match:
+                        code = match.group(1)
+                        invite_code = code
+                        return invite_code 
+                    return True
+                return None
 
             logger.error(f"<lm>{name}</lm> | Xabar: <lr>{message}</lr>")
 
         return False
 
 async def main():
+    import random
+
     with open("accounts.json", encoding="utf-8") as f:
         accounts_data = json.load(f)
 
-    batch_size = beastbatchsize
     accounts_list = list(accounts_data.items())
-    total_results = []
-
+    batch_size = beastbatchsize
     import csv
     def load_used_names(filepath):
         try:
@@ -318,11 +392,16 @@ async def main():
 
     used_names = load_used_names(f"{ID}.csv")
 
-    for i in range(0, len(accounts_list), batch_size):
-        batch = accounts_list[i:i + batch_size]
+    batches = divide_batches(accounts_list, batch_size)
+    total_results = []
+    global_invite_code = None
+
+    for idx, batch in enumerate(batches):
         tasks = []
 
-        for name, session_string in batch:
+        logger.info(f"🧩 {idx+1}-batch ishlayapti | InviteCode: {batch['invite_code'] or 'Yo‘q'}")
+
+        for name, session_string in batch["accounts"]:
             if name in used_names:
                 logger.success(f"<lr>{name}</lr> allaqachon qatnashgan, o'tkazildi")
                 continue
@@ -334,14 +413,23 @@ async def main():
             )
             await tg_client.start()
             await tg_client(UpdateStatusRequest(offline=False))
-            tasks.append(participate(tg_client, name))
+
+            # participate() endi invite_code qabul qiladi
+            tasks.append(participate(tg_client, name, batch.get("invite_code")))
 
         results = await asyncio.gather(*tasks)
         total_results.extend(results)
 
-    logger.info(f"<le>{sum(total_results)}</le>/<ly>{len(total_results)}</ly> ta akkaunt muvaffaqiyatli qatnashdi")
+        # Yangi invite_code olish (agar qatnashgan bo‘lsa)
+        successful_codes = [r for r in results if r]
+        if successful_codes:
+            global_invite_code = random.choice(successful_codes)
+            for b in batches:
+                if b["invite_code"] is None:
+                    b["invite_code"] = global_invite_code
 
-
+    muvaffaqiyatli = sum(bool(r) for r in total_results)
+    logger.info(f"<le>{muvaffaqiyatli}</le>/<ly>{len(total_results)}</ly> ta akkaunt muvaffaqiyatli qatnashdi")
 
 if __name__ == '__main__':
     asyncio.run(main())
