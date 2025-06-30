@@ -1,4 +1,4 @@
-#randombeast
+#referalsiz randombeast
 import sys
 import json
 import base64
@@ -157,51 +157,9 @@ async def get_result(code):
     logger.warning("CAPTCHA 20 soniyada yechilmadi, davom etilyapti...")
     return None
 
-import random
-
-def divide_batches(accounts_list, batch_size):
-    """
-    Divide accounts into batches based on custom invite strategy:
-    - First batch_size accounts run without inviteCode
-    - As soon as an inviteCode is obtained, use it for the next 4 * batch_size accounts
-    - Then again skip one batch (without inviteCode), then use same/new code for next 4 batches, and so on
-    """
-    batches = []
-    n = len(accounts_list)
-    i = 0
-    invite_period = 4
-    use_invite = False
-    invite_code = None
-
-    while i < n:
-        current_batch = accounts_list[i:i + batch_size]
-        batches.append({
-            "accounts": current_batch,
-            "use_invite": use_invite,
-            "invite_code": invite_code,
-        })
-
-        if use_invite:
-            invite_period -= 1
-            if invite_period == 0:
-                # after 4 batches, reset
-                use_invite = False
-                invite_period = 4
-        else:
-            if invite_code is None:
-                # this is first batch (no invite)
-                pass
-            else:
-                use_invite = True
-
-        i += batch_size
-
-    return batches
 
 
-
-
-async def participate(tg_client: TelegramClient, name, invite_code=None):
+async def participate(tg_client: TelegramClient, name):
     async with tg_client:
         bot_entity = await tg_client.get_entity("randombeast_bot")
         bot = InputUser(user_id=bot_entity.id, access_hash=bot_entity.access_hash)
@@ -250,6 +208,7 @@ async def participate(tg_client: TelegramClient, name, invite_code=None):
         'origin': 'https://randombeast.win',
         'pragma': 'no-cache',
         'priority': 'u=1, i',
+        'referer': f'https://randombeast.win/user/draws/drawjoin/{ID}',
         'sec-ch-ua': '"Microsoft Edge";v="134", "Chromium";v="134", "Not:A-Brand";v="24", "Microsoft Edge WebView2";v="134"',
         'sec-ch-ua-mobile': '?0',
         'sec-ch-ua-platform': '"Windows"',
@@ -260,40 +219,33 @@ async def participate(tg_client: TelegramClient, name, invite_code=None):
     }
 
     async with aiohttp.ClientSession(headers=headers) as http_client:
-        response = await http_client.get(F"https://randombeast.win/api/draw/getTracking?trackingCode={ID}")
-        if response.ok:
-            data = await response.json()
-            draw_id = data.get("drawId")
-            if draw_id:
-                headers["referer"] = f"https://randombeast.win/user/draws/drawjoin/{draw_id}"
-            
-        else:
-            logger.warning(f"<lm>{name}</lm> | Tekshirish holati: <lg>{response.status}</lg>")
         json_data = {
             "initData": init_data
         }
         for _ in range(2): response = await http_client.post("https://randombeast.win/api/auth/verify", json=json_data)
-        
-        attempt = 0
-        max_attempts = 3
-        success = False
+        logger.info(f"<lm>{name}</lm> | Tekshirish holati: <lg>{response.status}</lg>")
 
-        while attempt < max_attempts and not success:
-            attempt += 1
-            logger.info(f"<lm>{name}</lm> | Givga qatnashish {attempt}-urinish")
-
-            # Har safar yangi captcha olish
-            json_data = {
-                "drawId": draw_id,
-                "initData": init_data
-            }
-            response = await http_client.post("https://randombeast.win/api/draw/getdraw", json=json_data)
-            if not response.ok:
-                logger.error(f"<lm>{name}</lm> | Yangi CAPTCHA olishda xatolik")
-                continue
-
+        json_data = {
+            "drawId": ID,
+            "initData": init_data
+        }
+        response = await http_client.post("https://randombeast.win/api/draw/getdraw", json=json_data)
+        logger.info(f"<lm>{name}</lm> | GetDraw holati: <lg>{response.status}</lg>")
+        data = await response.json()
+        if not response.ok:
+            return False
+        elif "existingTicket" in data and data["existingTicket"]:
+            ticket = data["existingTicket"]
+            with open(f"{ID}.csv", "a", newline='', encoding='utf-8') as file:
+                    writer = csv.writer(file)
+                    writer.writerow([name])
+            logger.info(f"🎫 Ticket mavjud | <lg>{name}</lg> | ID: {ticket['id']} | Number: {ticket['ticketNumber']} | Status: {ticket['status']} | Created: {ticket['createdAt']}")
+            return True
+        else:
+            logger.info(f"⚠️ <ly>{name}</ly> | Ticket mavjud emas.")
+            logger.info("Givga qo'shilishni boshlayabman")
             data = await response.json()
-            checkin_token = data.get('checkinToken')
+            checkin_token = data['checkinToken']
             captcha = data.get('captcha', {})
 
             captcha_svg = captcha.get('svg')
@@ -301,87 +253,58 @@ async def participate(tg_client: TelegramClient, name, invite_code=None):
 
             if not captcha_svg or not captcha_token:
                 logger.error(f"<lm>{name}</lm> | CAPTCHA ma'lumotlari yetarli emas")
-                continue
+                return False
 
             base64_body = svg2base64(svg_data=captcha_svg)
             result_code = await img2txt(body=base64_body)
+
+
             await asyncio.sleep(delay=1)
+
             captcha_input = await get_result(code=result_code)
             if not captcha_input:
-                logger.warning(f"<lm>{name}</lm> | CAPTCHA yechilmadi, keyingi urinish...")
-                continue
-            
-            if invite_code:
-                #invite_codelik
-                json_data = {
-                    'drawId': draw_id,
-                    'initData': init_data,
-                    'inviteCode': invite_code,
-                    'captchaToken': captcha_token,
-                    'captchaInput': captcha_input,
-                    'challengeToken': None,
-                    'checkinToken': checkin_token,
-                    'livenessCheckHash': None,
-                    'trackingCode': None
-                }
-            else:
-                # invite_codesiz
-                json_data = {
-                    'drawId': draw_id,
-                    'initData': init_data,
-                    'captchaToken': captcha_token,
-                    'captchaInput': captcha_input,
-                    'challengeToken': None,
-                    'checkinToken': checkin_token,
-                }
+                logger.warning(f"<lm>{name}</lm> | CAPTCHA yechilmadi, lekin davom etyapman...")
 
+
+            # challenge_token = await get_challenge_token(ID, http_client)
+            # if not challenge_token:
+            #     return False
+
+            # logger.info(f"<lm>{name}</lm> | Challenge token: <lg>{challenge_token[:32]}...</lg>")
+
+            json_data = {
+                'drawId': ID,
+                'initData': init_data,
+                'captchaToken': captcha_token,
+                'captchaInput': captcha_input,
+                'challengeToken': None,
+                'checkinToken': checkin_token,
+            }
             response = await http_client.post("https://randombeast.win/api/draw/checkin", json=json_data)
             logger.info(f"<lm>{name}</lm> | Givga qatnashish holati: <lg>{response.status}</lg>")
-
             if not response.ok:
-                continue
+                return False
 
             data = await response.json()
-            success = data.get('success', False)
-            message = data.get('message', '')
+            success = data['success']
+            message = data['message']
 
             if success:
                 logger.success(f"<lm>{name}</lm> | <lc>{ID}</lc> Muvaffaqiyatli qatnashdi")
-                with open(f"{ID}.csv", 'a', newline='', encoding='utf-8') as file:
+                with open(f"{ID}.csv", "a", newline='', encoding='utf-8') as file:
                     writer = csv.writer(file)
                     writer.writerow([name])
-                    
-                json_data = {
-                    "action": "generateInviteLink",
-                    "drawId": draw_id,
-                    "initData": init_data
-                }
-                    
-                response = await http_client.post("https://randombeast.win/api/draw/invitelink", json=json_data)
-                if response.ok:
-                    result = await response.json()
-                    import re
-                    link = result["link"]
-                    match = re.search(r'invite_([A-Za-z0-9]+)', link)
-                    if match:
-                        code = match.group(1)
-                        invite_code = code
-                        return invite_code 
-                    return True
-                return None
-
+                return True
             logger.error(f"<lm>{name}</lm> | Xabar: <lr>{message}</lr>")
-
-        return False
-
+            return False
 async def main():
-    import random
-
     with open("accounts.json", encoding="utf-8") as f:
         accounts_data = json.load(f)
 
-    accounts_list = list(accounts_data.items())
     batch_size = beastbatchsize
+    accounts_list = list(accounts_data.items())
+    total_results = []
+
     import csv
     def load_used_names(filepath):
         try:
@@ -392,16 +315,11 @@ async def main():
 
     used_names = load_used_names(f"{ID}.csv")
 
-    batches = divide_batches(accounts_list, batch_size)
-    total_results = []
-    global_invite_code = None
-
-    for idx, batch in enumerate(batches):
+    for i in range(0, len(accounts_list), batch_size):
+        batch = accounts_list[i:i + batch_size]
         tasks = []
 
-        logger.info(f"🧩 {idx+1}-batch ishlayapti | InviteCode: {batch['invite_code'] or 'Yo‘q'}")
-
-        for name, session_string in batch["accounts"]:
+        for name, session_string in batch:
             if name in used_names:
                 logger.success(f"<lr>{name}</lr> allaqachon qatnashgan, o'tkazildi")
                 continue
@@ -413,23 +331,14 @@ async def main():
             )
             await tg_client.start()
             await tg_client(UpdateStatusRequest(offline=False))
-
-            # participate() endi invite_code qabul qiladi
-            tasks.append(participate(tg_client, name, batch.get("invite_code")))
+            tasks.append(participate(tg_client, name))
 
         results = await asyncio.gather(*tasks)
         total_results.extend(results)
 
-        # Yangi invite_code olish (agar qatnashgan bo‘lsa)
-        successful_codes = [r for r in results if r]
-        if successful_codes:
-            global_invite_code = random.choice(successful_codes)
-            for b in batches:
-                if b["invite_code"] is None:
-                    b["invite_code"] = global_invite_code
+    logger.info(f"<le>{sum(total_results)}</le>/<ly>{len(total_results)}</ly> ta akkaunt muvaffaqiyatli qatnashdi")
 
-    muvaffaqiyatli = sum(bool(r) for r in total_results)
-    logger.info(f"<le>{muvaffaqiyatli}</le>/<ly>{len(total_results)}</ly> ta akkaunt muvaffaqiyatli qatnashdi")
+
 
 if __name__ == '__main__':
     asyncio.run(main())
