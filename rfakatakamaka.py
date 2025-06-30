@@ -1,4 +1,4 @@
-#referalsiz randombeast
+#randombeast
 import sys
 import json
 import base64
@@ -208,7 +208,6 @@ async def participate(tg_client: TelegramClient, name):
         'origin': 'https://randombeast.win',
         'pragma': 'no-cache',
         'priority': 'u=1, i',
-        'referer': f'https://randombeast.win/user/draws/drawjoin/{ID}',
         'sec-ch-ua': '"Microsoft Edge";v="134", "Chromium";v="134", "Not:A-Brand";v="24", "Microsoft Edge WebView2";v="134"',
         'sec-ch-ua-mobile': '?0',
         'sec-ch-ua-platform': '"Windows"',
@@ -219,33 +218,40 @@ async def participate(tg_client: TelegramClient, name):
     }
 
     async with aiohttp.ClientSession(headers=headers) as http_client:
+        response = await http_client.get(F"https://randombeast.win/api/draw/getTracking?trackingCode={ID}")
+        if response.ok:
+            data = await response.json()
+            draw_id = data.get("drawId")
+            if draw_id:
+                headers["referer"] = f"https://randombeast.win/user/draws/drawjoin/{draw_id}"
+            
+        else:
+            logger.warning(f"<lm>{name}</lm> | Tekshirish holati: <lg>{response.status}</lg>")
         json_data = {
             "initData": init_data
         }
         for _ in range(2): response = await http_client.post("https://randombeast.win/api/auth/verify", json=json_data)
-        logger.info(f"<lm>{name}</lm> | Tekshirish holati: <lg>{response.status}</lg>")
+        
+        attempt = 0
+        max_attempts = 3
+        success = False
 
-        json_data = {
-            "drawId": ID,
-            "initData": init_data
-        }
-        response = await http_client.post("https://randombeast.win/api/draw/getdraw", json=json_data)
-        logger.info(f"<lm>{name}</lm> | GetDraw holati: <lg>{response.status}</lg>")
-        data = await response.json()
-        if not response.ok:
-            return False
-        elif "existingTicket" in data and data["existingTicket"]:
-            ticket = data["existingTicket"]
-            with open(f"{ID}.csv", "a", newline='', encoding='utf-8') as file:
-                    writer = csv.writer(file)
-                    writer.writerow([name])
-            logger.info(f"🎫 Ticket mavjud | <lg>{name}</lg> | ID: {ticket['id']} | Number: {ticket['ticketNumber']} | Status: {ticket['status']} | Created: {ticket['createdAt']}")
-            return True
-        else:
-            logger.info(f"⚠️ <ly>{name}</ly> | Ticket mavjud emas.")
-            logger.info("Givga qo'shilishni boshlayabman")
+        while attempt < max_attempts and not success:
+            attempt += 1
+            logger.info(f"<lm>{name}</lm> | Givga qatnashish {attempt}-urinish")
+
+            # Har safar yangi captcha olish
+            json_data = {
+                "drawId": draw_id,
+                "initData": init_data
+            }
+            response = await http_client.post("https://randombeast.win/api/draw/getdraw", json=json_data)
+            if not response.ok:
+                logger.error(f"<lm>{name}</lm> | Yangi CAPTCHA olishda xatolik")
+                continue
+
             data = await response.json()
-            checkin_token = data['checkinToken']
+            checkin_token = data.get('checkinToken')
             captcha = data.get('captcha', {})
 
             captcha_svg = captcha.get('svg')
@@ -253,50 +259,47 @@ async def participate(tg_client: TelegramClient, name):
 
             if not captcha_svg or not captcha_token:
                 logger.error(f"<lm>{name}</lm> | CAPTCHA ma'lumotlari yetarli emas")
-                return False
+                continue
 
             base64_body = svg2base64(svg_data=captcha_svg)
             result_code = await img2txt(body=base64_body)
-
-
             await asyncio.sleep(delay=1)
-
             captcha_input = await get_result(code=result_code)
             if not captcha_input:
-                logger.warning(f"<lm>{name}</lm> | CAPTCHA yechilmadi, lekin davom etyapman...")
+                logger.warning(f"<lm>{name}</lm> | CAPTCHA yechilmadi, keyingi urinish...")
+                continue
 
-
-            # challenge_token = await get_challenge_token(ID, http_client)
-            # if not challenge_token:
-            #     return False
-
-            # logger.info(f"<lm>{name}</lm> | Challenge token: <lg>{challenge_token[:32]}...</lg>")
-
+            # checkin so‘rovi
             json_data = {
-                'drawId': ID,
+                'drawId': draw_id,
                 'initData': init_data,
                 'captchaToken': captcha_token,
                 'captchaInput': captcha_input,
                 'challengeToken': None,
                 'checkinToken': checkin_token,
             }
+
             response = await http_client.post("https://randombeast.win/api/draw/checkin", json=json_data)
             logger.info(f"<lm>{name}</lm> | Givga qatnashish holati: <lg>{response.status}</lg>")
+
             if not response.ok:
-                return False
+                continue
 
             data = await response.json()
-            success = data['success']
-            message = data['message']
+            success = data.get('success', False)
+            message = data.get('message', '')
 
             if success:
                 logger.success(f"<lm>{name}</lm> | <lc>{ID}</lc> Muvaffaqiyatli qatnashdi")
-                with open(f"{ID}.csv", "a", newline='', encoding='utf-8') as file:
+                with open(f"{ID}.csv", 'a', newline='', encoding='utf-8') as file:
                     writer = csv.writer(file)
                     writer.writerow([name])
                 return True
+
             logger.error(f"<lm>{name}</lm> | Xabar: <lr>{message}</lr>")
-            return False
+
+        return False
+
 async def main():
     with open("accounts.json", encoding="utf-8") as f:
         accounts_data = json.load(f)
